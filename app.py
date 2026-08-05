@@ -52,6 +52,13 @@ def _generate_password() -> str:
     """
     endpoint_name = _require_env("ENDPOINT_NAME")
     w = WorkspaceClient()
+    # The Lakebase Autoscaling credential API lives under w.postgres. If it's
+    # missing, the installed databricks-sdk is too old (see requirements.txt).
+    if not hasattr(w, "postgres"):
+        raise RuntimeError(
+            "The installed databricks-sdk has no `postgres` API. Pin "
+            "databricks-sdk>=0.125.0 in requirements.txt and redeploy."
+        )
     credential = w.postgres.generate_database_credential(endpoint=endpoint_name)
     return credential.token
 

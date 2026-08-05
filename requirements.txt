@@ -1,3 +1,6 @@
 streamlit
 psycopg[binary]
-databricks-sdk
+# Pinned: the Lakebase Autoscaling `w.postgres.generate_database_credential`
+# API only exists in newer SDKs. Databricks Apps ships an older bundled SDK,
+# so an unpinned requirement leaves it in place and the API is missing.
+databricks-sdk>=0.125.0
