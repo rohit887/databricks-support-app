@@ -1,0 +1,4 @@
+command: ["streamlit", "run", "app.py"]
+env:
+  - name: ENDPOINT_NAME
+    value: "<PASTE ENDPOINT RESOURCE NAME HERE>"
