@@ -1,4 +1,4 @@
 command: ["streamlit", "run", "app.py"]
 env:
   - name: ENDPOINT_NAME
-    value: "projects/support-app-db/branches/br-summer-tree-d8e4aa9i/endpoints/ep-broad-dew-d8vj9g7i"
+    value: "projects/support-app-db/branches/production/endpoints/primary"
