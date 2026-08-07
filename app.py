@@ -8,6 +8,7 @@ committed state. A browser refresh re-reads everything from the database.
 
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import psycopg
 import streamlit as st
@@ -15,6 +16,54 @@ from databricks.sdk import WorkspaceClient
 
 STATUSES = ["open", "in_progress", "resolved"]
 PRIORITIES = ["low", "medium", "high"]
+
+# Status badge palette: (background, text). Amber / blue / green.
+STATUS_COLORS = {
+    "open": ("#fef3c7", "#92400e"),
+    "in_progress": ("#dbeafe", "#1e40af"),
+    "resolved": ("#dcfce7", "#166534"),
+}
+
+# Subtle priority dot colors: low is muted, high stands out.
+PRIORITY_COLORS = {
+    "low": "#94a3b8",
+    "medium": "#f59e0b",
+    "high": "#ef4444",
+}
+
+
+def status_badge(status: str) -> str:
+    """Return an inline HTML pill for a ticket status."""
+    bg, fg = STATUS_COLORS.get(status, ("#e5e7eb", "#374151"))
+    label = status.replace("_", " ").title()
+    return (
+        f"<span style='background:{bg};color:{fg};padding:2px 10px;"
+        f"border-radius:9999px;font-size:0.75rem;font-weight:600;"
+        f"white-space:nowrap;'>{label}</span>"
+    )
+
+
+def priority_marker(priority: str) -> str:
+    """Return an inline HTML dot + label indicating priority."""
+    color = PRIORITY_COLORS.get(priority, "#94a3b8")
+    return (
+        f"<span style='color:{color};font-size:0.9rem;'>&#9679;</span> "
+        f"<span style='font-size:0.8rem;color:#475569;'>{priority.title()}</span>"
+    )
+
+
+def relative_time(dt) -> str:
+    """Human-friendly 'time ago' for a tz-aware timestamp."""
+    if dt is None:
+        return ""
+    seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+    if seconds < 60:
+        return "just now"
+    for unit, size in (("m", 60), ("h", 3600), ("d", 86400)):
+        value = seconds / size
+        if value < (60 if unit == "m" else 24 if unit == "h" else 30):
+            return f"{int(value)}{unit} ago"
+    return f"{dt:%Y-%m-%d}"
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +221,16 @@ def update_status(ticket_id, status):
         conn.commit()
 
 
+def delete_ticket(ticket_id):
+    # Messages are removed automatically via ON DELETE CASCADE on the FK.
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM tickets WHERE ticket_id = %s",
+            (ticket_id,),
+        )
+        conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
@@ -179,9 +238,12 @@ def update_status(ticket_id, status):
 st.set_page_config(page_title="Support Tickets", layout="wide")
 st.title("🎫 Support Tickets")
 
-# The only thing we keep in session state is the currently-selected ticket ID.
+# Session state holds only UI state: the selected ticket and a pending-delete
+# flag. No application data is cached here — Postgres stays the source of truth.
 if "selected_ticket_id" not in st.session_state:
     st.session_state.selected_ticket_id = None
+if "pending_delete_id" not in st.session_state:
+    st.session_state.pending_delete_id = None
 
 
 def render_stats():
@@ -221,15 +283,21 @@ def render_ticket_list():
         return
 
     for tid, title, status, priority, created_by, created_at in tickets:
-        label = f"#{tid} · {title}"
         with st.container(border=True):
-            st.markdown(f"**{label}**")
-            st.caption(
-                f"Status: `{status}`  |  Priority: `{priority}`  |  "
-                f"By: {created_by}  |  {created_at:%Y-%m-%d %H:%M}"
+            st.markdown(
+                f"**#{tid} · {title}**&nbsp;&nbsp;{status_badge(status)}",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"{priority_marker(priority)}"
+                f"<span style='color:#94a3b8;'> &nbsp;·&nbsp; </span>"
+                f"<span style='font-size:0.8rem;color:#475569;'>{created_by} · "
+                f"{relative_time(created_at)}</span>",
+                unsafe_allow_html=True,
             )
             if st.button("View / manage", key=f"select_{tid}"):
                 st.session_state.selected_ticket_id = tid
+                st.session_state.pending_delete_id = None
                 st.rerun()
 
 
@@ -268,6 +336,7 @@ def render_ticket_detail(ticket_id):
     if ticket is None:
         st.warning("That ticket no longer exists.")
         st.session_state.selected_ticket_id = None
+        st.session_state.pending_delete_id = None
         return
 
     tid, title, status, priority, created_by, created_at = ticket
@@ -276,11 +345,15 @@ def render_ticket_detail(ticket_id):
     header[0].subheader(f"#{tid} · {title}")
     if header[1].button("Close"):
         st.session_state.selected_ticket_id = None
+        st.session_state.pending_delete_id = None
         st.rerun()
 
-    st.caption(
-        f"Priority: `{priority}`  |  By: {created_by}  |  "
-        f"{created_at:%Y-%m-%d %H:%M}"
+    st.markdown(
+        f"{status_badge(status)}&nbsp;&nbsp;{priority_marker(priority)}"
+        f"<span style='color:#94a3b8;'> &nbsp;·&nbsp; </span>"
+        f"<span style='font-size:0.8rem;color:#475569;'>Opened by {created_by} · "
+        f"{relative_time(created_at)}</span>",
+        unsafe_allow_html=True,
     )
 
     # Update status
@@ -313,8 +386,15 @@ def render_ticket_detail(ticket_id):
         st.info("No messages yet.")
     for message_text, author, msg_created_at in messages:
         with st.chat_message("user"):
-            st.markdown(f"**{author}** · {msg_created_at:%Y-%m-%d %H:%M}")
+            st.markdown(
+                f"**{author}**"
+                f"<span style='color:#94a3b8;font-size:0.8rem;'> · "
+                f"{relative_time(msg_created_at)}</span>",
+                unsafe_allow_html=True,
+            )
             st.write(message_text)
+
+    st.divider()
 
     # Add a message
     with st.form(f"add_message_form_{tid}", clear_on_submit=True):
@@ -323,18 +403,48 @@ def render_ticket_detail(ticket_id):
         submitted = st.form_submit_button("Add message")
 
     if submitted:
+        # Validate without early-returning, so the delete section below still
+        # renders on the same run.
         if not message_text.strip():
             st.error("Message text is required.")
-            return
-        if not author.strip():
+        elif not author.strip():
             st.error("Author is required.")
-            return
-        try:
-            add_message(tid, message_text.strip(), author.strip())
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not add message: {exc}")
-            return
-        st.rerun()
+        else:
+            try:
+                add_message(tid, message_text.strip(), author.strip())
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not add message: {exc}")
+            else:
+                st.rerun()
+
+    st.divider()
+
+    # Delete with confirmation — never on a single click. The first click only
+    # arms a pending-delete flag; the actual DELETE runs on Confirm.
+    if st.session_state.pending_delete_id == tid:
+        st.warning(
+            f"Delete ticket **#{tid} · {title}** and its "
+            f"{len(messages)} message(s)? This cannot be undone."
+        )
+        confirm_col, cancel_col = st.columns(2)
+        if confirm_col.button(
+            "Confirm delete", key=f"confirm_delete_{tid}", type="primary"
+        ):
+            try:
+                delete_ticket(tid)  # messages cascade via the FK
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not delete ticket: {exc}")
+            else:
+                st.session_state.pending_delete_id = None
+                st.session_state.selected_ticket_id = None
+                st.rerun()
+        if cancel_col.button("Cancel", key=f"cancel_delete_{tid}"):
+            st.session_state.pending_delete_id = None
+            st.rerun()
+    else:
+        if st.button("Delete ticket", key=f"delete_{tid}"):
+            st.session_state.pending_delete_id = tid
+            st.rerun()
 
 
 # Layout: list + create on the left, detail on the right.
