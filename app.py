@@ -366,10 +366,10 @@ def render_ticket_detail(ticket_id):
     # flag — the actual DELETE runs on Confirm below.
     header = st.columns([5, 1.4, 1.4], vertical_alignment="center")
     header[0].subheader(f"#{tid} · {title}")
-    if header[1].button("Delete", key=f"delete_{tid}", width="stretch"):
+    if header[1].button("Delete", key=f"delete_{tid}", use_container_width=True):
         st.session_state.pending_delete_id = tid
         st.rerun()
-    if header[2].button("Close", key=f"close_{tid}", width="stretch"):
+    if header[2].button("Close", key=f"close_{tid}", use_container_width=True):
         st.session_state.selected_ticket_id = None
         st.session_state.pending_delete_id = None
         st.rerun()

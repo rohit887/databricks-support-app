@@ -1,4 +1,7 @@
-streamlit
+# Pinned: Databricks Apps ships an older bundled Streamlit that lacks the
+# container `key` / column `vertical_alignment` APIs this app uses. An unpinned
+# requirement leaves that old version in place, so pin a known-good release.
+streamlit==1.41.1
 psycopg[binary]
 # Pinned: the Lakebase Autoscaling `w.postgres.generate_database_credential`
 # API only exists in newer SDKs. Databricks Apps ships an older bundled SDK,
