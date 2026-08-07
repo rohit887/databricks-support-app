@@ -237,23 +237,19 @@ def delete_ticket(ticket_id):
 
 st.set_page_config(page_title="Support Tickets", page_icon="🎧", layout="wide")
 
-# Light styling: turn each bordered container into a white "card" that stands
-# out against the tinted page background, giving every section a clear boundary.
-# Nested cards (e.g. ticket rows inside the list) render flatter and lighter.
+# Light styling scoped to keyed containers only (via Streamlit's `st-key-*`
+# class), so it never touches columns or metrics. Section cards are white with
+# a soft shadow so they stand out against the tinted page; ticket rows are a
+# lighter fill so they read as rows within the list card.
 st.markdown(
     """
     <style>
-      [data-testid="stVerticalBlockBorderWrapper"] {
+      [class*="st-key-card-"] {
         background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 1.1rem 1.4rem;
         box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
       }
-      [data-testid="stVerticalBlockBorderWrapper"]
-      [data-testid="stVerticalBlockBorderWrapper"] {
+      [class*="st-key-ticketrow-"] {
         background: #f8fafc;
-        box-shadow: none;
       }
     </style>
     """,
@@ -307,7 +303,7 @@ def render_ticket_list():
         return
 
     for tid, title, status, priority, created_by, created_at in tickets:
-        with st.container(border=True):
+        with st.container(border=True, key=f"ticketrow-{tid}"):
             st.markdown(
                 f"**#{tid} · {title}**&nbsp;&nbsp;{status_badge(status)}",
                 unsafe_allow_html=True,
@@ -365,14 +361,15 @@ def render_ticket_detail(ticket_id):
 
     tid, title, status, priority, created_by, created_at = ticket
 
-    # Header: title on the left, Delete + Close actions on the right. Delete only
-    # arms the pending-delete flag — the actual DELETE runs on Confirm below.
-    header = st.columns([5, 1, 1])
+    # Header: title on the left, Delete + Close actions on the right, vertically
+    # centered and wide enough not to wrap. Delete only arms the pending-delete
+    # flag — the actual DELETE runs on Confirm below.
+    header = st.columns([5, 1.4, 1.4], vertical_alignment="center")
     header[0].subheader(f"#{tid} · {title}")
-    if header[1].button("Delete", key=f"delete_{tid}"):
+    if header[1].button("Delete", key=f"delete_{tid}", width="stretch"):
         st.session_state.pending_delete_id = tid
         st.rerun()
-    if header[2].button("Close", key=f"close_{tid}"):
+    if header[2].button("Close", key=f"close_{tid}", width="stretch"):
         st.session_state.selected_ticket_id = None
         st.session_state.pending_delete_id = None
         st.rerun()
@@ -473,20 +470,20 @@ def render_ticket_detail(ticket_id):
 
 # Layout: each section lives in its own card. Stats span the top; below, the
 # ticket list + create form sit on the left and the ticket detail on the right.
-with st.container(border=True):
+with st.container(border=True, key="card-stats"):
     render_stats()
 
 st.write("")  # small gap between the stats card and the columns
 
 left, right = st.columns(2, gap="large")
 with left:
-    with st.container(border=True):
+    with st.container(border=True, key="card-list"):
         render_ticket_list()
     st.write("")
-    with st.container(border=True):
+    with st.container(border=True, key="card-create"):
         render_create_ticket()
 with right:
-    with st.container(border=True):
+    with st.container(border=True, key="card-detail"):
         if st.session_state.selected_ticket_id is not None:
             render_ticket_detail(st.session_state.selected_ticket_id)
         else:
