@@ -341,9 +341,14 @@ def render_ticket_detail(ticket_id):
 
     tid, title, status, priority, created_by, created_at = ticket
 
-    header = st.columns([6, 1])
+    # Header: title on the left, Delete + Close actions on the right. Delete only
+    # arms the pending-delete flag — the actual DELETE runs on Confirm below.
+    header = st.columns([5, 1, 1])
     header[0].subheader(f"#{tid} · {title}")
-    if header[1].button("Close"):
+    if header[1].button("Delete", key=f"delete_{tid}"):
+        st.session_state.pending_delete_id = tid
+        st.rerun()
+    if header[2].button("Close", key=f"close_{tid}"):
         st.session_state.selected_ticket_id = None
         st.session_state.pending_delete_id = None
         st.rerun()
@@ -355,6 +360,38 @@ def render_ticket_detail(ticket_id):
         f"{relative_time(created_at)}</span>",
         unsafe_allow_html=True,
     )
+
+    # Load messages once: used both for the confirm banner's count and the thread.
+    try:
+        messages = fetch_messages(tid)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not load messages: {exc}")
+        return
+
+    # Delete confirmation, inline right under the header so it's tied to the
+    # ticket you're looking at. Never deletes on a single click.
+    if st.session_state.pending_delete_id == tid:
+        st.warning(
+            f"Delete ticket **#{tid} · {title}** and its "
+            f"{len(messages)} message(s)? This cannot be undone."
+        )
+        confirm_col, cancel_col = st.columns(2)
+        if confirm_col.button(
+            "Confirm delete", key=f"confirm_delete_{tid}", type="primary"
+        ):
+            try:
+                delete_ticket(tid)  # messages cascade via the FK
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not delete ticket: {exc}")
+            else:
+                st.session_state.pending_delete_id = None
+                st.session_state.selected_ticket_id = None
+                st.rerun()
+        if cancel_col.button("Cancel", key=f"cancel_delete_{tid}"):
+            st.session_state.pending_delete_id = None
+            st.rerun()
+
+    st.divider()
 
     # Update status
     new_status = st.selectbox(
@@ -376,12 +413,6 @@ def render_ticket_detail(ticket_id):
 
     # Messages, chronological
     st.markdown("### Messages")
-    try:
-        messages = fetch_messages(tid)
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not load messages: {exc}")
-        return
-
     if not messages:
         st.info("No messages yet.")
     for message_text, author, msg_created_at in messages:
@@ -403,8 +434,6 @@ def render_ticket_detail(ticket_id):
         submitted = st.form_submit_button("Add message")
 
     if submitted:
-        # Validate without early-returning, so the delete section below still
-        # renders on the same run.
         if not message_text.strip():
             st.error("Message text is required.")
         elif not author.strip():
@@ -416,35 +445,6 @@ def render_ticket_detail(ticket_id):
                 st.error(f"Could not add message: {exc}")
             else:
                 st.rerun()
-
-    st.divider()
-
-    # Delete with confirmation — never on a single click. The first click only
-    # arms a pending-delete flag; the actual DELETE runs on Confirm.
-    if st.session_state.pending_delete_id == tid:
-        st.warning(
-            f"Delete ticket **#{tid} · {title}** and its "
-            f"{len(messages)} message(s)? This cannot be undone."
-        )
-        confirm_col, cancel_col = st.columns(2)
-        if confirm_col.button(
-            "Confirm delete", key=f"confirm_delete_{tid}", type="primary"
-        ):
-            try:
-                delete_ticket(tid)  # messages cascade via the FK
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Could not delete ticket: {exc}")
-            else:
-                st.session_state.pending_delete_id = None
-                st.session_state.selected_ticket_id = None
-                st.rerun()
-        if cancel_col.button("Cancel", key=f"cancel_delete_{tid}"):
-            st.session_state.pending_delete_id = None
-            st.rerun()
-    else:
-        if st.button("Delete ticket", key=f"delete_{tid}"):
-            st.session_state.pending_delete_id = tid
-            st.rerun()
 
 
 # Layout: list + create on the left, detail on the right.
