@@ -236,6 +236,30 @@ def delete_ticket(ticket_id):
 # ---------------------------------------------------------------------------
 
 st.set_page_config(page_title="Support Tickets", page_icon="🎧", layout="wide")
+
+# Light styling: turn each bordered container into a white "card" that stands
+# out against the tinted page background, giving every section a clear boundary.
+# Nested cards (e.g. ticket rows inside the list) render flatter and lighter.
+st.markdown(
+    """
+    <style>
+      [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.1rem 1.4rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+      }
+      [data-testid="stVerticalBlockBorderWrapper"]
+      [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #f8fafc;
+        box-shadow: none;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🎧 Support Tickets")
 
 # Session state holds only UI state: the selected ticket and a pending-delete
@@ -447,17 +471,23 @@ def render_ticket_detail(ticket_id):
                 st.rerun()
 
 
-# Layout: list + create on the left, detail on the right.
-render_stats()
-st.divider()
+# Layout: each section lives in its own card. Stats span the top; below, the
+# ticket list + create form sit on the left and the ticket detail on the right.
+with st.container(border=True):
+    render_stats()
 
-left, right = st.columns(2)
+st.write("")  # small gap between the stats card and the columns
+
+left, right = st.columns(2, gap="large")
 with left:
-    render_ticket_list()
-    st.divider()
-    render_create_ticket()
+    with st.container(border=True):
+        render_ticket_list()
+    st.write("")
+    with st.container(border=True):
+        render_create_ticket()
 with right:
-    if st.session_state.selected_ticket_id is not None:
-        render_ticket_detail(st.session_state.selected_ticket_id)
-    else:
-        st.info("Select a ticket to view its messages and manage it.")
+    with st.container(border=True):
+        if st.session_state.selected_ticket_id is not None:
+            render_ticket_detail(st.session_state.selected_ticket_id)
+        else:
+            st.info("Select a ticket to view its messages and manage it.")
