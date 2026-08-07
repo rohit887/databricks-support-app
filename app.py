@@ -235,8 +235,8 @@ def delete_ticket(ticket_id):
 # UI
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="Support Tickets", layout="wide")
-st.title("🎫 Support Tickets")
+st.set_page_config(page_title="Support Tickets", page_icon="🎧", layout="wide")
+st.title("🎧 Support Tickets")
 
 # Session state holds only UI state: the selected ticket and a pending-delete
 # flag. No application data is cached here — Postgres stays the source of truth.
